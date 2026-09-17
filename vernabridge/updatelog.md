@@ -10,7 +10,7 @@ Format:
 
 ---
 
-- **2026-09-18 — Seed importers for Spanish and Portuguese** (not yet committed)
+- **2026-09-18 — Seed importers for Spanish and Portuguese** (commit `2d65fbb`)
   - Added the `services/kb` Python package: the data model for name claims
     ("assertions"), a name normalizer, and three plug-in importers that pull
     vernacular names from Wikidata, the Catalogue of Life, and Flora e Funga
@@ -21,8 +21,7 @@ Format:
     that name matching will run against. Spanish and Portuguese go first
     (owner decision); Hindi follows once these two are fully verified.
 
-- **2026-09-18 — Project started: M0 design document** (not yet committed — repo
-  will be initialized when the owner asks)
+- **2026-09-18 — Project started: M0 design document** (commit `fc7bbb9`)
   - Added `docs/design.md` (the full design), `PROGRESS.md` (running status) and
     this file.
   - Why: Milestone M0 requires a reviewed design before any production code.
