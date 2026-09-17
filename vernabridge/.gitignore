@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+
+# Downloaded source archives and big files — never commit data dumps
+data/cache/
+data/samples/*.jsonl
+
+# OS noise
+.DS_Store
