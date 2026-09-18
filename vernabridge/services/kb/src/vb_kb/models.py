@@ -56,6 +56,12 @@ class Assertion(BaseModel):
     # --- taxonomy anchoring (filled by the backbone-resolve step; may be empty here) ---
     taxon_key: int | None = Field(default=None, description="GBIF backbone accepted taxonKey")
     backbone_version: str | None = Field(default=None, description="Backbone version used")
+    backbone_match_type: str | None = Field(
+        default=None, description="GBIF matchType (EXACT, FUZZY, ...) from the resolve step"
+    )
+    backbone_confidence: int | None = Field(
+        default=None, description="GBIF match confidence (0..100) from the resolve step"
+    )
 
     # --- provenance: where the claim came from ---
     source_name: str = Field(description="Human-readable source name")

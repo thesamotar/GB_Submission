@@ -37,3 +37,19 @@ Spanish and Portuguese are built and fully verified first (rich open seed data,
 measurable gold sets). Only after both pass evaluation do we start Hindi, then
 other languages. Why: proves the pipeline on solid ground before tackling the
 scarce-data, multi-script cases. Owner decision, 2026-09-18.
+
+## ADR-006: Deterministic assertion ids; taxon_key may be NULL
+
+Two small deviations from the design sketch (docs/design.md 6.1), made when
+building the database layer:
+
+1. An assertion's id is a UUIDv5 hash of (source, normalized name, language,
+   scientific name, region), computed in code. Same claim = same id, so
+   loading a file twice — or the same claim arriving via two files — cannot
+   create duplicates. Re-runs are safe by construction instead of by careful
+   bookkeeping. The namespace UUID in `vb_kb/db.py` must never change.
+2. The design sketch said `taxon_key NOT NULL`; the real column allows NULL.
+   The backbone-resolve step only trusts EXACT matches (a wrong species key
+   is the one unforgivable KB error), so honestly-unresolved claims exist and
+   are worth keeping for review. Matching queries exclude them with
+   `taxon_key IS NOT NULL` until a human anchors them.

@@ -14,3 +14,8 @@ data/samples/*.jsonl
 
 # OS noise
 .DS_Store
+
+# Backbone-resolve working files
+backbone_cache.json
+*.jsonl
+!data/gold/*.jsonl

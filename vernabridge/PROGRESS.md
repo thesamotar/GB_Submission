@@ -2,6 +2,41 @@
 
 Simple running log of where the project stands. Newest on top.
 
+## 2026-09-18 — M1 continued: backbone-resolve + Postgres loading + stats
+
+**Built**
+- Backbone-resolve step (`vb_kb/backbone.py`): anchors every assertion to a
+  GBIF accepted taxonKey via species/match v2 (v1 fallback per call).
+  Conservative by design: only EXACT matches auto-fill; synonyms resolve to
+  the accepted taxon; matchType + confidence recorded on every row; answers
+  cached on disk so re-runs cost zero API calls.
+- Postgres layer (`vb_kb/db.py` + Alembic): kb_source / kb_assertion /
+  kb_review / kb_release per design 6.1, deterministic UUIDv5 ids so loading
+  is idempotent (ADR-006), pg_trgm trigram index ready for M2 fuzzy recall.
+  Migration applied and verified against a real PostgreSQL 16.
+- `vb_kb stats`: per-language / per-source / per-status counts with backbone
+  fill-rate, from JSONL files or from the database. This is the "what's in
+  the KB" view until the web app exists — no frontend needed in M1.
+- CLI now covers the whole pipeline: import → resolve → load → stats.
+- 28 offline tests total (15 new), ruff + mypy --strict clean. End-to-end
+  proven live in-session: fixture JSONL loaded twice into Postgres 16
+  (second load: 0 inserted, 3 skipped — idempotency holds), stats read back,
+  trigram similarity query answered from the new index.
+
+**In progress / next**
+- Full import runs (~45k es/pt assertions) + backbone-resolve + load, on a
+  machine with open network access (this session's sandbox blocks
+  api.gbif.org / query.wikidata.org / api.checklistbank.org, so full runs
+  and live re-verification of the v2 response shape wait for that).
+- First evaluation gold sets; Zenodo release packaging.
+
+**Known issues / watch list**
+- The v2 species/match parser is built from the shape verified live on
+  2026-09-18 (design 2) and covered by offline fixtures; re-verify against
+  the live API on the next network-open session before the first full run.
+- Owner note (2026-09-18): database download for verification deferred —
+  working from iPad; verify counts after the first full import run instead.
+
 ## 2026-09-18 — M1 started: seed importers working (Spanish + Portuguese)
 
 **Built**
