@@ -10,7 +10,7 @@ Format:
 
 ---
 
-- **2026-09-18 — Backbone-resolve step, Postgres schema + loader, KB stats**
+- **2026-09-18 — Backbone-resolve step, Postgres schema + loader, KB stats** (commit `b50c97a`)
   - Added the step that anchors every imported name claim to GBIF's taxonomic
     backbone (the stable species numbering the whole pipeline keys on). It is
     deliberately cautious: only exact matches fill the key, synonyms resolve
