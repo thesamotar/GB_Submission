@@ -10,7 +10,7 @@ Format:
 
 ---
 
-- **2026-09-20 — Fixed two backbone-matching bugs found against the live GBIF API** (commit `d08fb19`)
+- **2026-09-20 — Fixed two backbone-matching bugs found against the live GBIF API** (commit `d5537d2`)
   - We finally ran the name-matching code against the real GBIF service (the
     previous session's machine had no internet access to it). Two things were
     wrong, and both mattered.
@@ -34,7 +34,7 @@ Format:
     load first would have filled the KB with tens of thousands of wrong,
     too-coarse links.
 
-- **2026-09-18 — Backbone-resolve step, Postgres schema + loader, KB stats** (commit `b50c97a`)
+- **2026-09-18 — Backbone-resolve step, Postgres schema + loader, KB stats** (commit `0618b13`)
   - Added the step that anchors every imported name claim to GBIF's taxonomic
     backbone (the stable species numbering the whole pipeline keys on). It is
     deliberately cautious: only exact matches fill the key, synonyms resolve
