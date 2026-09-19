@@ -10,7 +10,7 @@ Format:
 
 ---
 
-- **2026-09-20 — Fixed two backbone-matching bugs found against the live GBIF API** (commit `PENDING`)
+- **2026-09-20 — Fixed two backbone-matching bugs found against the live GBIF API** (commit `d08fb19`)
   - We finally ran the name-matching code against the real GBIF service (the
     previous session's machine had no internet access to it). Two things were
     wrong, and both mattered.
