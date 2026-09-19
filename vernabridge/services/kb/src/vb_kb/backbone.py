@@ -34,19 +34,51 @@ V2_URL = "https://api.gbif.org/v2/species/match"
 V1_URL = "https://api.gbif.org/v1/species/match"
 
 # Match types GBIF can return. Only EXACT is trusted to auto-fill taxon_key.
+# v2 also returns VARIANT (orthographic variant) where v1 said FUZZY; neither
+# is trusted, so the conservative rule holds across both APIs.
 TRUSTED_MATCH_TYPES = {"EXACT"}
+
+# Ranks we are willing to anchor an assertion to. A vernacular name pinned to a
+# genus (or anything above it) is not a species claim, and the KB must not
+# pretend otherwise — see the rank guard in _rank_adjusted_match_type().
+ANCHORABLE_RANKS = {
+    "SPECIES",
+    "SUBSPECIES",
+    "VARIETY",
+    "SUBVARIETY",
+    "FORM",
+    "SUBFORM",
+}
+
+
+def _rank_adjusted_match_type(match_type: str, rank: str | None) -> str:
+    """Downgrade an EXACT hit that landed above species to HIGHERRANK.
+
+    Verified live 2026-09-20: v2 answers a genus-only query ("Quercus") with
+    matchType EXACT and the genus key — it does NOT say HIGHERRANK the way v1's
+    docs led us to expect. Taken at face value that would auto-anchor a genus
+    key as if it were a species, which is exactly the mistake the design
+    forbids. We normalise it here, in one place, so both parsers agree and the
+    reason stays legible downstream (stats counts it as HIGHERRANK).
+
+    An unknown rank is treated as higher-rank too: we do not anchor on a guess.
+    """
+    if match_type in TRUSTED_MATCH_TYPES and (rank or "").upper() not in ANCHORABLE_RANKS:
+        return "HIGHERRANK"
+    return match_type
 
 
 @dataclass
 class BackboneMatch:
     """What GBIF told us about one scientific name. Stored in the cache."""
 
-    match_type: str  # EXACT | FUZZY | HIGHERRANK | NONE | ERROR
+    match_type: str  # EXACT | FUZZY | VARIANT | HIGHERRANK | NONE | ERROR
     taxon_key: int | None  # the ACCEPTED taxonKey (synonyms already followed)
     accepted_name: str | None  # scientific name of the accepted taxon
     status: str | None  # ACCEPTED | SYNONYM | DOUBTFUL | ...
     confidence: int | None  # 0..100 as GBIF reports it
     api: str  # 'v2' or 'v1' — which endpoint answered
+    rank: str | None = None  # rank of the taxon we would anchor to
 
     @property
     def trusted(self) -> bool:
@@ -67,10 +99,15 @@ def _as_int(value: Any) -> int | None:
 def parse_v2(payload: dict[str, Any]) -> BackboneMatch:
     """Turn a v2 species/match response into a BackboneMatch.
 
-    v2 shape (verified live 2026-09-18, see design.md section 2):
-    the taxon is under 'usage', the accepted taxon (when the input was a
-    synonym) under 'acceptedUsage', and matchType/confidence/status live
-    under 'diagnostics'.
+    v2 shape (re-verified live 2026-09-20): the taxon is under 'usage', the
+    accepted taxon (when the input was a synonym) under 'acceptedUsage', and
+    matchType/confidence under 'diagnostics'.
+
+    Correction from that re-verification: 'diagnostics' carries only
+    matchType/confidence/timeTaken/timings — there is NO 'status' there. The
+    taxonomic status lives on the usage ('ACCEPTED' / 'SYNONYM'), so that is
+    where we read it from; the old diagnostics lookup silently produced None
+    on every row. Keys also arrive as strings in v2, which _as_int absorbs.
     """
     diagnostics = payload.get("diagnostics") or {}
     match_type = str(diagnostics.get("matchType") or "NONE")
@@ -78,13 +115,22 @@ def parse_v2(payload: dict[str, Any]) -> BackboneMatch:
     accepted = payload.get("acceptedUsage") or {}
     # Prefer the accepted taxon; fall back to the usage itself when accepted.
     chosen = accepted if accepted.get("key") is not None else usage
+    rank = chosen.get("rank")
+    # Status describes the NAME WE LOOKED UP (SYNONYM when it was a synonym),
+    # so it always comes from 'usage', never from the accepted taxon.
+    status = usage.get("status") or diagnostics.get("status")
+    if status is None and chosen.get("key") is not None and payload.get("synonym") is not None:
+        # Only infer from the top-level flag when something actually matched —
+        # a NONE row carries synonym=false and must not claim to be ACCEPTED.
+        status = "SYNONYM" if payload["synonym"] else "ACCEPTED"
     return BackboneMatch(
-        match_type=match_type,
+        match_type=_rank_adjusted_match_type(match_type, rank),
         taxon_key=_as_int(chosen.get("key")),
         accepted_name=chosen.get("canonicalName") or chosen.get("name"),
-        status=diagnostics.get("status"),
+        status=status,
         confidence=_as_int(diagnostics.get("confidence")),
         api="v2",
+        rank=rank,
     )
 
 
@@ -96,13 +142,15 @@ def parse_v1(payload: dict[str, Any]) -> BackboneMatch:
     """
     match_type = str(payload.get("matchType") or "NONE")
     taxon_key = _as_int(payload.get("acceptedUsageKey")) or _as_int(payload.get("usageKey"))
+    rank = payload.get("rank")
     return BackboneMatch(
-        match_type=match_type,
+        match_type=_rank_adjusted_match_type(match_type, rank),
         taxon_key=taxon_key,
         accepted_name=payload.get("canonicalName") or payload.get("scientificName"),
         status=payload.get("status"),
         confidence=_as_int(payload.get("confidence")),
         api="v1",
+        rank=rank,
     )
 
 
@@ -175,6 +223,7 @@ class ResolveReport:
     already_anchored: int = 0  # source gave us a taxonKey (e.g. Wikidata P846)
     anchored_now: int = 0  # EXACT match filled taxon_key in this run
     left_unresolved: int = 0  # non-exact or failed; needs review, not guessing
+    higher_rank: int = 0  # matched above species — counted inside left_unresolved
     api_calls: int = 0
 
 
@@ -222,6 +271,8 @@ def resolve_assertions(
             report.anchored_now += 1
         else:
             report.left_unresolved += 1
+            if match.match_type == "HIGHERRANK":
+                report.higher_rank += 1
         yield updated
     # Failed lookups must not poison the cache file across runs.
     resolver.cache = {k: v for k, v in resolver.cache.items() if v.match_type != "ERROR"}

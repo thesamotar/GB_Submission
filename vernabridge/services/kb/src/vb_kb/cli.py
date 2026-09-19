@@ -86,8 +86,8 @@ def cmd_resolve(in_path: Path, out: Path | None, cache: Path) -> int:
     print(
         f"Resolved {in_path} -> {out}: {report.total} rows, "
         f"{report.already_anchored} already anchored, {report.anchored_now} anchored now, "
-        f"{report.left_unresolved} left for review ({report.api_calls} API calls, "
-        f"cache: {cache})"
+        f"{report.left_unresolved} left for review ({report.higher_rank} of them matched "
+        f"above species rank) ({report.api_calls} API calls, cache: {cache})"
     )
     return 0
 

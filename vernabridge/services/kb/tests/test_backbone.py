@@ -1,9 +1,10 @@
 """Tests for the backbone-resolve step. All offline — no network calls.
 
-Fixture payloads are shaped like the real GBIF responses (v1 shape recorded
-live on 2026-09-18; v2 shape per the same day's design verification). Live
-behaviour is re-checked by running the CLI against the real API whenever
-the network allows.
+Fixture payloads are shaped like the real GBIF responses. The v2 fixtures were
+CORRECTED on 2026-09-20 against live api.gbif.org responses: the earlier ones
+put 'status' inside 'diagnostics', where the real API never puts it, and had no
+case for a genus-level hit. Live behaviour is re-checked by running the CLI
+against the real API whenever the network allows.
 """
 
 import json
@@ -25,23 +26,54 @@ from vb_kb.models import Assertion, SourceType
 V2_EXACT_ACCEPTED = {
     "synonym": False,
     "usage": {
-        "key": 2490719,
+        "key": "2490719",  # v2 returns keys as STRINGS
         "name": "Turdus rufiventris Vieillot, 1818",
         "canonicalName": "Turdus rufiventris",
         "rank": "SPECIES",
+        "status": "ACCEPTED",  # status lives here, NOT in diagnostics
     },
-    "classification": [{"key": 1, "name": "Animalia", "rank": "KINGDOM"}],
-    "diagnostics": {"matchType": "EXACT", "confidence": 100, "status": "ACCEPTED"},
+    "classification": [{"key": "1", "name": "Animalia", "rank": "KINGDOM"}],
+    "diagnostics": {"matchType": "EXACT", "confidence": 100, "timeTaken": 1},
 }
 
 V2_EXACT_SYNONYM = {
     "synonym": True,
-    "usage": {"key": 5333294, "canonicalName": "Achras caimito", "rank": "SPECIES"},
-    "acceptedUsage": {"key": 2884876, "canonicalName": "Pouteria caimito", "rank": "SPECIES"},
-    "diagnostics": {"matchType": "EXACT", "confidence": 99, "status": "SYNONYM"},
+    "usage": {
+        "key": "5333294",
+        "canonicalName": "Achras caimito",
+        "rank": "SPECIES",
+        "status": "SYNONYM",
+    },
+    "acceptedUsage": {"key": "2884876", "canonicalName": "Pouteria caimito", "rank": "SPECIES"},
+    "diagnostics": {"matchType": "EXACT", "confidence": 99, "timeTaken": 1},
 }
 
-V2_NONE = {"diagnostics": {"matchType": "NONE", "confidence": 100}}
+# A genus-only query. Live v2 answers EXACT with the GENUS key — it does not
+# say HIGHERRANK. Anchoring this would put a genus key on a species claim.
+V2_GENUS_EXACT = {
+    "synonym": False,
+    "usage": {
+        "key": "2877951",
+        "canonicalName": "Quercus",
+        "rank": "GENUS",
+        "status": "ACCEPTED",
+    },
+    "diagnostics": {"matchType": "EXACT", "confidence": 94, "timeTaken": 1},
+}
+
+# Live v2 calls an orthographic misspelling VARIANT where v1 says FUZZY.
+V2_VARIANT = {
+    "synonym": False,
+    "usage": {
+        "key": "2878688",
+        "canonicalName": "Quercus robur",
+        "rank": "SPECIES",
+        "status": "ACCEPTED",
+    },
+    "diagnostics": {"matchType": "VARIANT", "confidence": 95, "timeTaken": 1},
+}
+
+V2_NONE = {"synonym": False, "diagnostics": {"matchType": "NONE", "confidence": 100}}
 
 V1_EXACT = {
     "usageKey": 2490719,
@@ -50,6 +82,7 @@ V1_EXACT = {
     "status": "ACCEPTED",
     "confidence": 99,
     "matchType": "EXACT",
+    "rank": "SPECIES",
     "synonym": False,
 }
 
@@ -60,6 +93,7 @@ V1_SYNONYM = {
     "status": "SYNONYM",
     "confidence": 98,
     "matchType": "EXACT",
+    "rank": "SPECIES",
     "synonym": True,
 }
 
@@ -69,6 +103,7 @@ V1_FUZZY = {
     "status": "ACCEPTED",
     "confidence": 80,
     "matchType": "FUZZY",
+    "rank": "SPECIES",
     "synonym": False,
 }
 
@@ -79,6 +114,14 @@ def test_v2_exact_accepted() -> None:
     assert match.taxon_key == 2490719
     assert match.accepted_name == "Turdus rufiventris"
     assert match.api == "v2"
+    assert match.rank == "SPECIES"
+
+
+def test_v2_reads_status_from_usage_not_diagnostics() -> None:
+    # Regression: the live API has no diagnostics.status, so reading it there
+    # left every v2 row with status=None.
+    assert parse_v2(V2_EXACT_ACCEPTED).status == "ACCEPTED"
+    assert parse_v2(V2_EXACT_SYNONYM).status == "SYNONYM"
 
 
 def test_v2_synonym_resolves_to_accepted_key() -> None:
@@ -87,11 +130,33 @@ def test_v2_synonym_resolves_to_accepted_key() -> None:
     assert match.accepted_name == "Pouteria caimito"
 
 
+def test_v2_genus_exact_is_not_anchored() -> None:
+    # Regression: v2 says EXACT for a genus-only hit. Anchoring it would pin a
+    # vernacular name to a genus key as though it were a species.
+    match = parse_v2(V2_GENUS_EXACT)
+    assert match.rank == "GENUS"
+    assert match.match_type == "HIGHERRANK"
+    assert not match.trusted
+
+
+def test_v2_variant_is_recorded_but_not_trusted() -> None:
+    match = parse_v2(V2_VARIANT)
+    assert match.match_type == "VARIANT"
+    assert not match.trusted
+
+
+def test_v1_higher_rank_is_not_anchored() -> None:
+    match = parse_v1({**V1_EXACT, "rank": "GENUS"})
+    assert match.match_type == "HIGHERRANK"
+    assert not match.trusted
+
+
 def test_v2_none_is_not_trusted() -> None:
     match = parse_v2(V2_NONE)
     assert match.match_type == "NONE"
     assert match.taxon_key is None
     assert not match.trusted
+    assert match.status is None  # a no-match row must not claim ACCEPTED
 
 
 def test_v1_exact_and_synonym() -> None:

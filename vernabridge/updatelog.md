@@ -10,6 +10,30 @@ Format:
 
 ---
 
+- **2026-09-20 — Fixed two backbone-matching bugs found against the live GBIF API** (commit `PENDING`)
+  - We finally ran the name-matching code against the real GBIF service (the
+    previous session's machine had no internet access to it). Two things were
+    wrong, and both mattered.
+  - First and most serious: when you look up a name that is only a genus — a
+    group of species rather than one species — GBIF now answers "exact match".
+    Our code trusted that and would have pinned common names to a whole genus
+    as though it were a single species. That is the one kind of mistake this
+    project must never make, so the code now checks what LEVEL the match came
+    back at and refuses to anchor anything coarser than a species.
+  - Second: we were reading each name's taxonomic status (is this the accepted
+    name, or an older synonym?) from the wrong part of the response, so it came
+    back empty every time. Now read from the right place.
+  - Our offline tests had been written from the same mistaken idea of the
+    response, so they happily agreed with the bug. They have been rewritten
+    from real responses, with new tests pinning down both failures. 32 tests
+    pass; lint and type checks clean.
+  - Also added `.env.example` and started ignoring `.env`, so database
+    passwords have an obvious home outside the repo.
+  - Why: this was the "re-verify against the live API before the first full
+    run" item on the watch list — it earned its keep. Running the full data
+    load first would have filled the KB with tens of thousands of wrong,
+    too-coarse links.
+
 - **2026-09-18 — Backbone-resolve step, Postgres schema + loader, KB stats** (commit `b50c97a`)
   - Added the step that anchors every imported name claim to GBIF's taxonomic
     backbone (the stable species numbering the whole pipeline keys on). It is
